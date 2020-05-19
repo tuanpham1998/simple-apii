@@ -4,7 +4,7 @@ const Ao = require('../../model/ao');
 const cors = require('cors');
 const verify = require('../../Cotroller/authCotroller');
 
-router.get('/', verify, async(req, res, next) => {
+router.get('/', async(req, res, next) => {
     const find = await Ao.find({}, (err, data) => {
         res.status(200).json(data)
     })
