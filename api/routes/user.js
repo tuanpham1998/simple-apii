@@ -1,109 +1,68 @@
 const express = require('express');
 const router = express.Router();
-const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const cors = require('cors');
 
 const User = require('../model/user');
 
-router.get('/user', async(req, res, next) => {
-    const getUser = await User.find({}, function(err, data) {
-        res.status(200).json(data);
-    });
-    if (getUser.err) {
-        return res.status(500).json({
-            error: err
-        })
+router.get('/user', async (req, res, next) => {
+    try {
+        const getUser = await User.find({});
+        if (!getUser) return res.status(500).json({ message: getUser.error });
+        return res.status(200).json(getUser.data);
+    } catch (err) {
+        return res.status(500).json({ message: err });
     }
-    console.log('da');
 })
 
-router.post('/singup', async(req, res, next) => {
-    const a = await User.find({ email: req.body.email });
-    if (a.err) {
-        return res.status(409).json({
-            error: err
-        })
-    }
-    if (a.length >= 1) {
-        return res.status(409).json({
-            message: 'mail exists'
-        })
-    }
-    bcrypt.hash(req.body.password, 10, (err, hash) => {
-        if (err) {
-            return res.status(500).json({
-                error: err
+router.post('/singup', async (req, res, next) => {
+    const check_exsit = await User.find({ email: req.body.email });
+    if (check_exsit.err) return res.status(409).json({ error: err })
+    if (check_exsit.length >= 1) return res.status(409).json({ message: 'mail exists' })
+    const result_hash = await bcrypt.hash(req.body.password, 10);
+    if (!result_hash) return res.status(500).json({ error: "Error System" });
+    const user = new User({
+        email: req.body.email,
+        password: result_hash
+    })
+    const save = user.save();
+    if (save.err) return res.status(409).json({ error: "Error System" });
+    res.status(201).json({
+        message: 'user created',
+        data: user
+    });
+})
+
+router.post('/login', async (req, res, next) => {
+    try {
+        const user = await User.find({ email: req.body.email });
+        if (user.length < 1) return res.status(401).json({ message: "Auth failed" });
+        const hash_result = await bcrypt.compare(req.body.password, user[0].password);
+        if (!hash_result) return res.status(401).status.json({ message: "Error System" });
+        const user_data = {
+            email: user[0].email,
+            userId: user[0]._id
+        }
+        const token = jwt.sign(user_data, process.env.Secret, { expiresIn: "1h" });
+        if (token) {
+            return res.status(200).json({
+                message: "Auth successful",
+                token: token
             });
         }
-        const user = new User({
-            email: req.body.email,
-            password: hash
-        })
-        const save = user.save();
-        if (save.err) {
-            return res.status(409).json({
-                error: err
-            })
-        }
-        res.status(201).json({
-            message: 'user created',
-            data: user
+        return res.status(401).json({
+            message: "Auth failed"
         });
-    })
-})
-
-router.post('/login', (req, res, next) => {
-    User.find({ email: req.body.email })
-        .exec()
-        .then(user => {
-            if (user.length < 1) {
-                return res.status(401).json({
-                    message: "Auth failed"
-                });
-            }
-            bcrypt.compare(req.body.password, user[0].password, (err, result) => {
-                if (err) {
-                    return res.status(401).status.json({
-                        message: "Auth failed"
-                    });
-                }
-                if (result) {
-                    const token = jwt.sign({
-                            email: user[0].email,
-                            userId: user[0]._id
-                        },
-                        process.env.Secret, {
-                            expiresIn: "1h"
-                        });
-                    return res.status(200).json({
-                        message: "Auth successful",
-                        token: token
-                    });
-                }
-
-                res.status(401).json({
-                    message: "Auth failed"
-                });
-            })
-        })
-        .catch()
+    } catch (err) {
+        return res.status(401).json({
+            message: err
+        });
+    }
 })
 
 router.delete('/:userId', (req, res, next) => {
-    User.remove({ _id: req.params.userId })
-        .exec()
-        .then(result => {
-            res.status(200).json({
-                message: 'user deleted'
-            })
-        })
-        .catch(err => {
-            res.status(500).json({
-                error: err
-            })
-        })
+    const rs = await User.remove({ _id: req.params.userId });
+    if (rs) return res.status(200).json({ message: "Delete Success" });
 })
 
 module.exports = router;
